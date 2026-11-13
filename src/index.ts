@@ -1,5 +1,5 @@
 /**
- * @dsh-external/dsh-github-workspace — host 半。
+ * @dsh-external/dsh-git-workspace — host 半。
  *
  * 给浏览器半提供本地回环 HTTP 路由，把指定 GitHub 仓库拉到磁盘并回报绝对路径。
  * 工作区的注册由 ui-workspace 的洞所有者完成，本插件不碰工作区注册表。
@@ -22,7 +22,7 @@ import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 
-export const name = 'dsh-github-workspace'
+export const name = 'dsh-git-workspace'
 export const inject = ['webServer']
 
 const ROUTE_PREFIX = '/gh-workspace'
@@ -649,7 +649,7 @@ export function apply(ctx: AppContext): void {
     let gitError = ''
 
     if (git !== null && !running.cancelled) {
-      ctx.logger?.info?.(`[dsh-github-workspace] git clone ${parsed.label} -> ${dest}`)
+      ctx.logger?.info?.(`[dsh-git-workspace] git clone ${parsed.label} -> ${dest}`)
       progress(3, '正在连接')
       const attempt = await cloneWithGit(
         git,
@@ -684,10 +684,10 @@ export function apply(ctx: AppContext): void {
         return
       }
       gitError = attempt.stderr
-      ctx.logger?.warn?.(`[dsh-github-workspace] git clone 失败：${gitError.slice(0, 200)}`)
+      ctx.logger?.warn?.(`[dsh-git-workspace] git clone 失败：${gitError.slice(0, 200)}`)
       progress(10, '准备兜底')
     } else if (git === null) {
-      ctx.logger?.warn?.('[dsh-github-workspace] 未找到 git 可执行文件')
+      ctx.logger?.warn?.('[dsh-git-workspace] 未找到 git 可执行文件')
     }
 
     // git 分支可能已被取消：进入下载前先早退，别让 tarball 白跑一趟。
@@ -927,10 +927,10 @@ export function apply(ctx: AppContext): void {
 
   ctx.effect(
     () => ctx.webServer.register({ kind: 'prefix', path: ROUTE_PREFIX, handler }),
-    'dsh-github-workspace: /gh-workspace routes',
+    'dsh-git-workspace: /gh-workspace routes',
   )
 
-  ctx.logger?.info?.(`[dsh-github-workspace] clone 路由就绪：POST ${ROUTE_PREFIX}/clone`)
+  ctx.logger?.info?.(`[dsh-git-workspace] clone 路由就绪：POST ${ROUTE_PREFIX}/clone`)
 }
 
 function serializeJob(job: CloneJob): Record<string, unknown> {

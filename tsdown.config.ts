@@ -11,9 +11,9 @@ import type { UserConfig } from 'tsdown'
  * duplicate factory registration 硬报错，整个 web boot 失败，渲染层重试 3 次
  * 后放弃 —— DSH NEXT 直接退出。
  *
- * 这里曾经写死成旧安装别名 "@dsh-external/dsh-github-workspace"，与包名
- * "dsh-github-workspace" 不一致，正是 2026-10-28 DSH NEXT 启动崩溃的根因。
- * 改成从 package.json 派生：package.json name / cordis.patch.yml 的 id+name /
+ * 历史上这里写死过一个与包名不一致的别名（先带 @dsh-external/ scope，包名去掉
+ * scope 后没同步），正是 2026-10-28 DSH NEXT 启动崩溃的根因。
+ * 现在从 package.json 派生：package.json name / cordis.patch.yml 的 id+name /
  * 本文件的注册 id 三处从此不会漂移。
  */
 const pkg = JSON.parse(

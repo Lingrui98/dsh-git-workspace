@@ -1,5 +1,5 @@
 /**
- * @dsh-external/dsh-github-workspace — client 半。
+ * @dsh-external/dsh-git-workspace — client 半。
  *
  * 接管 ui-workspace 声明的两个 directory-flow 单占洞，把原来的目录浏览
  * 对话框换成「本地目录 / GitHub 仓库」双来源对话框。
@@ -648,7 +648,7 @@ export function apply(ctx: ClientContext): void {
       // 重复 apply（动态注入与启动自动恢复同时存活）时字典已由先者注册。
       return () => {}
     }
-  }, 'dsh-github-workspace: dictionaries')
+  }, 'dsh-git-workspace: dictionaries')
 
   const injected = () => {
     // 与 dsh-client-ui-directory-picker-native 相同的两级来源：

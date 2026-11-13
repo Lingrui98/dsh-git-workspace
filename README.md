@@ -1,4 +1,4 @@
-# dsh-github-workspace
+# dsh-git-workspace
 
 在 DeepSeek Harness 的「新建工作区」按钮上，加一个「从 Git 仓库创建」的来源。
 
@@ -160,13 +160,13 @@ Web 端通常没有 `pickDirectory`，本地页签只显示路径输入和内置
 
 ```bash
 # 从 npm
-dsh plugin --profile web add dsh-github-workspace
+dsh plugin --profile web add dsh-git-workspace
 
 # 从 GitHub 源码
-dsh plugin --profile web add github:OWNER/dsh-github-workspace
+dsh plugin --profile web add github:OWNER/dsh-git-workspace
 
 # 从本地目录（开发）
-dsh plugin --profile web add /absolute/path/to/dsh-github-workspace
+dsh plugin --profile web add /absolute/path/to/dsh-git-workspace
 ```
 
 装完重启 GUI / `dsh web`。host 行由 `cordis.patch.yml` 声明，client 由 `dsh.client` 声明驱动。
@@ -180,11 +180,11 @@ npm publish            # 或 gh release create v0.1.0 <tgz>
 ```
 
 `files` 只包含 `lib`、`cordis.patch.yml`、`README.md`、`LICENSE`。<br>
-包名是无 scope 的 `dsh-github-workspace`，`package.json` 的 `name` 与 `cordis.patch.yml` 的 `id` / `name` 必须一致。
+包名是无 scope 的 `dsh-git-workspace`，`package.json` 的 `name` 与 `cordis.patch.yml` 的 `id` / `name` 必须一致。
 client bundle 的 `__ModuleLoader__.load({ id })` 注册 id 由 `tsdown.config.ts` 从 `package.json.name` 派生，**禁止手写别名**：
 DSH 的 client-modules 用包名当 boot graph 的 row id，注册 id 不一致会让同一个 bundle 被执行两遍，
 撞上 `duplicate factory registration`，整个 web boot 失败、渲染层恢复耗尽后 DSH NEXT 直接退出
-（2026-10-28 的启动崩溃就是写死的旧别名 `@dsh-external/dsh-github-workspace` 引起的）。
+（2026-10-28 的启动崩溃就是写死的旧别名 `@dsh-external/dsh-git-workspace` 引起的）。
 
 ## 构建
 
@@ -199,7 +199,7 @@ npm run build:client                                     # client 半 → lib/cl
 装配（桌面 profile）：
 
 ```text
-dev_install_package { dir: "C:/Users/admin/Documents/dsh-infra/plugins/dsh-github-workspace", profile: "desktop" }
+dev_install_package { dir: "C:/Users/admin/Documents/dsh-infra/plugins/dsh-git-workspace", profile: "desktop" }
 ```
 
 装配器默认往 `profiles/web` 注入，而桌面 GUI 跑的是 `profiles/desktop` —— 必须显式指定 `profile: "desktop"`，

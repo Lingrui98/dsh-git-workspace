@@ -1,5 +1,5 @@
 {
-  "name": "dsh-github-workspace",
+  "name": "dsh-git-workspace",
   "version": "0.1.0",
   "description": "Add a GitHub repository source to the new-workspace flow, with background clone progress and local credential reuse",
   "keywords": [
