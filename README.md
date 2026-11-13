@@ -1,10 +1,24 @@
 # dsh-github-workspace
 
-在 DeepSeek Harness 的「新建工作区」按钮上，加一个「从 GitHub 仓库创建」的来源。
+在 DeepSeek Harness 的「新建工作区」按钮上，加一个「从 Git 仓库创建」的来源。
 
 点侧栏的 **Add workspace**（或新会话 Hero 里的工作区选择器），弹出的不再是原来的目录浏览对话框，
-而是两个页签：**本地目录** 和 **GitHub 仓库**。填 `owner/repo` 或粘贴仓库地址，插件把仓库拉到本地，
+而是两个页签：**本地目录** 和 **Git 仓库**。填仓库地址，插件把仓库拉到本地，
 再把路径交回给原生工作区流程，最后和手动选目录一样出现在工作区列表里。
+
+## 支持的仓库地址
+
+| 形式 | 例子 | 说明 |
+| --- | --- | --- |
+| 短格式 | `deepseek-ai/DeepSeek-Harness` | 默认 github.com |
+| HTTPS | `https://gitlab.com/group/repo`、`https://gitee.com/owner/repo.git` | 任意 Git 服务器，可带端口 |
+| SSH 协议 | `ssh://git@gitlab.com/group/repo.git` | 走本机 SSH key |
+| SCP 风格 | `git@github.com:owner/repo.git` | 走本机 SSH key |
+| git 协议 | `git://example.com/team/repo.git` | 只读协议 |
+
+目标目录名取自地址的最后一段（去掉 `.git`），冲突时直接复用已有目录。
+
+明确拒绝 `file://`、本地绝对路径、`../` 与 `~` 开头的输入 —— 这不是 clone 本地目录的入口。
 
 ## 它接管了什么
 
@@ -35,13 +49,15 @@ host 半按两级尝试：
    - `C:\Program Files\Git\cmd\git.exe`、`C:\Program Files\Git\bin\git.exe`、
      `C:\Program Files (x86)\Git\cmd\git.exe`、`%LOCALAPPDATA%\Programs\Git\cmd\git.exe`
    - 类 Unix：`/usr/bin/git`、`/usr/local/bin/git`、`/opt/homebrew/bin/git`
-2. **codeload tarball**：git 不存在或 clone 失败时，下载
+   - 最后回退到 PATH 里的裸 `git`（`git --version` 探测）
+2. **codeload tarball 兜底 —— 仅 GitHub**：git 不存在或 clone 失败时，下载
    `https://codeload.github.com/<owner>/<repo>/tar.gz/<ref>`，用系统 `tar` 解压并剥掉顶层目录。
 
-> 本机用户的 PATH 里没有 Git，所以第 1 步依赖绝对路径探测，不依赖 `git` 命令可直接调用。
+> 非 GitHub 主机（GitLab、Gitee、自建服务器）**只有 git 一条路径**：它们没有等价的公开归档接口，
+> 找不到 git 时会直接报错并提示安装 git，而不是悄悄降级。
 > tarball 结果没有 `.git` 目录，后续 git 操作需要用户自己 `git init`。
 
-拉取目标默认是 `~/.dsh/github-workspaces/<repo>`；在对话框里填「克隆到」可以改父目录。
+拉取目标默认是 `~/.dsh/github-workspaces/<repo>`；在对话框里填「克隆到」可以改父目录（该目录必须已存在）。
 
 ## 后台任务、进度与角落浮层
 
@@ -62,16 +78,18 @@ host 半按两级尝试：
 
 克隆私有仓库有三条路，按优先级：
 
-1. **复用的本机 git 凭据（默认）**：token 留空时，插件不覆盖 `credential.helper`，git 会照常调用你本机配置的凭据助手。本机是 `credential.helper = manager`（Git Credential Manager），凭据存在 Windows 凭据管理器里 —— 之前 `git clone` 能过，这里也能过。
+1. **复用的本机 git 凭据（默认）**：token 留空时，插件不覆盖 `credential.helper`，git 会照常调用你本机配置的凭据助手。本机是 `credential.helper = manager`（Git Credential Manager），凭据存在 Windows 凭据管理器里 —— 之前 `git clone` 能过，这里也能过。SSH 地址（`ssh://`、`git@host:path`）走本机 SSH key。
 2. **环境变量**：`GITHUB_TOKEN` 或 `GH_TOKEN`。
-3. **手动填 token**：「GitHub 仓库」页签底部的「私有仓库凭据」，填 GitHub Personal Access Token。
+3. **手动填 token**：「Git 仓库」页签底部的「访问令牌」，填该服务器的 Personal Access Token（GitHub `ghp_…`、GitLab `glpat-…` 等）。
 
-手动填的凭据只用于本次克隆，**不落盘、不记录**，页面关闭即丢。token 通过 git 的 `GIT_CONFIG_*` 环境变量注入（`http.https://github.com/.extraheader`），**不进命令行参数**，所以不会出现在进程列表里，也不会写进 `.git/config`。tarball 路径同样支持，用 `Authorization: Bearer`。
+手动填的凭据只用于本次克隆，**不落盘、不记录**，页面关闭即丢。token 通过 git 的 `GIT_CONFIG_*` 环境变量注入，
+配置键按**仓库地址的实际主机**拼成 `http.https://<host>/.extraheader`，所以 GitHub / GitLab / 自建服务器都能用同一个输入框。
+token **不进命令行参数**，不会出现在进程列表里，也不会写进 `.git/config`。GitHub 的 tarball 兜底同样支持，用 `Authorization: Bearer`。
 
-权限范围：私有仓库需要 `repo` scope。
+权限范围：GitHub 需要 `repo` scope；GitLab 需要 `read_repository` 或 `api`。
 
 认证类失败会单独提示：`git` 输出里出现 `Authentication failed` / `could not read Username` / `Repository not found` / `403` 时，
-浮层会直接告诉你"本机凭据没覆盖该仓库，请填 token"，而不是丢一段原始 stderr。
+浮层会直接告诉你"本机凭据没覆盖该仓库，请填令牌"，而不是丢一段原始 stderr。
 
 ## 路由
 

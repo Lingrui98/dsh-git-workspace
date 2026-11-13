@@ -55,9 +55,18 @@ type AppContext = {
 }
 
 interface ParsedRepo {
+  /** 界面展示用的来源标识（host/path 或 owner/repo） */
+  label: string
+  /** GitHub 的 owner；非 GitHub 为空串 */
   owner: string
+  /** 目标目录名（地址尾段，去掉 .git） */
   repo: string
+  /** 原样交给 git clone 的地址 */
   url: string
+  /** 小写主机名，用于凭据注入 */
+  host: string
+  /** 只有 GitHub 能走 codeload tarball 兜底 */
+  isGitHub: boolean
 }
 
 type JobState = 'running' | 'done' | 'failed' | 'cancelled'
@@ -84,24 +93,99 @@ interface RunningJob {
 
 const SEGMENT_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/
 const BRANCH_RE = /^[A-Za-z0-9._/-]+$/
+const HOST_RE = /^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::\d{1,5})?$/
+const REPO_NAME_RE = /^[A-Za-z0-9._-]+$/
+const PATH_CHARS_RE = /^[A-Za-z0-9._/-]+$/
 
-/** 只接受 owner/repo 与两种 GitHub URL 形态；拒绝任何路径拼接字符。 */
+function lastSegment(path: string): string | null {
+  const parts = path.split('/').filter((part) => part !== '')
+  const last = parts[parts.length - 1]
+  if (last === undefined) return null
+  const name = last.endsWith('.git') ? last.slice(0, -4) : last
+  if (name === '' || name === '.' || name === '..') return null
+  if (!REPO_NAME_RE.test(name)) return null
+  return name
+}
+
+/**
+ * 解析任意 Git 仓库地址：
+ *   - 短格式 `owner/repo`（默认 github.com，保持旧行为）
+ *   - 协议地址 `https://host/path`、`ssh://git@host/path`、`git://host/path`
+ *   - SCP 风格 `git@host:path`
+ *
+ * 明确拒绝本地路径与 file://：这不是「clone 本地目录」的入口，
+ * 放开等于把读取本地文件系统的能力暴露给调用方。
+ */
 function parseRepo(input: unknown): ParsedRepo | null {
   if (typeof input !== 'string') return null
   const raw = input.trim()
   if (raw === '') return null
 
-  const https = /^(?:https?:\/\/github\.com\/)([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(raw)
-  const ssh = /^(?:git@github\.com:)([^/]+)\/([^/]+?)(?:\.git)?$/.exec(raw)
-  const short = /^([^/\s]+)\/([^/\s]+?)(?:\.git)?$/.exec(raw)
+  // 本地路径 / file:// 一律拒绝
+  if (/^file:/i.test(raw)) return null
+  if (raw.startsWith('/') || raw.startsWith('\\') || raw.startsWith('.') || raw.startsWith('~')) return null
+  if (/^[A-Za-z]:[\\/]/.test(raw)) return null
 
-  const match = https ?? ssh ?? short
-  if (!match) return null
-  const owner = match[1]
-  const repo = match[2]
-  if (!SEGMENT_RE.test(owner) || !SEGMENT_RE.test(repo)) return null
-  if (repo === '.' || repo === '..') return null
-  return { owner, repo, url: `https://github.com/${owner}/${repo}.git` }
+  // 1) 协议地址
+  const withScheme = /^(https?|ssh|git):\/\/([^/]+)\/(.+)$/.exec(raw)
+  if (withScheme !== null) {
+    const scheme = withScheme[1].toLowerCase()
+    const authority = withScheme[2]
+    const at = authority.lastIndexOf('@')
+    const hostPort = at >= 0 ? authority.slice(at + 1) : authority
+    const path = withScheme[3].replace(/\/+$/, '')
+    if (!HOST_RE.test(hostPort)) return null
+    if (!PATH_CHARS_RE.test(path) || path.includes('..')) return null
+    const repo = lastSegment(path)
+    if (repo === null) return null
+    const host = hostPort.split(':')[0].toLowerCase()
+    const parts = path.split('/').filter((part) => part !== '')
+    return {
+      label: `${host}/${parts.join('/')}`,
+      owner: host === 'github.com' && parts.length >= 2 ? parts[0] : '',
+      repo,
+      url: scheme === 'http' ? raw : raw,
+      host,
+      isGitHub: host === 'github.com',
+    }
+  }
+
+  // 2) SCP 风格 user@host:path
+  const scp = /^([A-Za-z0-9_.-]+)@([A-Za-z0-9.-]+):(.+)$/.exec(raw)
+  if (scp !== null) {
+    const host = scp[2].toLowerCase()
+    const path = scp[3].replace(/\/+$/, '')
+    if (!PATH_CHARS_RE.test(path) || path.includes('..')) return null
+    const repo = lastSegment(path)
+    if (repo === null) return null
+    const parts = path.split('/').filter((part) => part !== '')
+    return {
+      label: `${host}/${parts.join('/')}`,
+      owner: host === 'github.com' && parts.length >= 2 ? parts[0] : '',
+      repo,
+      url: raw,
+      host,
+      isGitHub: host === 'github.com',
+    }
+  }
+
+  // 3) 短格式 owner/repo → github.com
+  const short = /^([A-Za-z0-9][A-Za-z0-9_.-]*)\/([A-Za-z0-9._-]+?)(?:\.git)?$/.exec(raw)
+  if (short !== null) {
+    const owner = short[1]
+    const repo = short[2]
+    if (!SEGMENT_RE.test(owner) || !REPO_NAME_RE.test(repo) || repo === '.' || repo === '..') return null
+    return {
+      label: `${owner}/${repo}`,
+      owner,
+      repo,
+      url: `https://github.com/${owner}/${repo}.git`,
+      host: 'github.com',
+      isGitHub: true,
+    }
+  }
+
+  return null
 }
 
 function isLoopback(req: any): boolean {
@@ -267,14 +351,15 @@ function resolveTarExecutable(): string {
  * - token 走 GIT_CONFIG_* 环境变量而不是命令行参数，这样 token 不会出现在
  *   进程列表里，也不会写进 .git/config。
  */
-function authEnv(token: string): Record<string, string> {
+function authEnv(token: string, host: string): Record<string, string> {
   const env: Record<string, string> = { GIT_TERMINAL_PROMPT: '0' }
-  if (token === '') return env
+  if (token === '' || host === '') return env
   const basic = Buffer.from(`x-access-token:${token}`).toString('base64')
   return {
     ...env,
     GIT_CONFIG_COUNT: '1',
-    GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
+    // 按实际主机匹配，GitHub / GitLab / 自建服务器都能用同一个 token。
+    GIT_CONFIG_KEY_0: `http.https://${host}/.extraheader`,
     GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
   }
 }
@@ -390,6 +475,7 @@ async function cloneWithGit(
   branch: string,
   timeoutMs: number,
   token: string,
+  host: string,
   hooks: {
     onProgress?: (percent: number, detail: string) => void
     onSpawn?: (child: { kill: () => void }) => void
@@ -402,7 +488,7 @@ async function cloneWithGit(
 
   let lastPercent = 0
   const result = await runProcess(git, args, timeoutMs, {
-    env: authEnv(token),
+    env: authEnv(token, host),
     onSpawn: hooks.onSpawn,
     isCancelled: hooks.isCancelled,
     onStderr: (text) => {
@@ -563,15 +649,24 @@ export function apply(ctx: AppContext): void {
     let gitError = ''
 
     if (git !== null && !running.cancelled) {
-      ctx.logger?.info?.(`[dsh-github-workspace] git clone ${parsed.owner}/${parsed.repo} -> ${dest}`)
+      ctx.logger?.info?.(`[dsh-github-workspace] git clone ${parsed.label} -> ${dest}`)
       progress(3, '正在连接')
-      const attempt = await cloneWithGit(git, parsed.url, dest, branchRaw, timeoutMs, token, {
-        onProgress: progress,
-        onSpawn: (child) => {
-          running.child = child
+      const attempt = await cloneWithGit(
+        git,
+        parsed.url,
+        dest,
+        branchRaw,
+        timeoutMs,
+        token,
+        parsed.host,
+        {
+          onProgress: progress,
+          onSpawn: (child) => {
+            running.child = child
+          },
+          isCancelled: () => running.cancelled,
         },
-        isCancelled: () => running.cancelled,
-      })
+      )
       if (attempt.ok) {
         job.state = 'done'
         job.percent = 100
@@ -589,16 +684,28 @@ export function apply(ctx: AppContext): void {
         return
       }
       gitError = attempt.stderr
-      ctx.logger?.warn?.(`[dsh-github-workspace] git clone 失败，改用 tarball：${gitError.slice(0, 200)}`)
-      progress(10, '切换下载方式')
+      ctx.logger?.warn?.(`[dsh-github-workspace] git clone 失败：${gitError.slice(0, 200)}`)
+      progress(10, '准备兜底')
     } else if (git === null) {
-      ctx.logger?.warn?.('[dsh-github-workspace] 未找到 git，直接使用 tarball')
+      ctx.logger?.warn?.('[dsh-github-workspace] 未找到 git 可执行文件')
     }
 
     // git 分支可能已被取消：进入下载前先早退，别让 tarball 白跑一趟。
     if (running.cancelled) {
       job.state = 'cancelled'
       job.detail = '已取消'
+      job.finishedAt = Date.now()
+      await rm(dest, { recursive: true, force: true }).catch(() => {})
+      return
+    }
+
+    // 只有 GitHub 有 codeload 归档接口；其他主机的唯一路径就是 git。
+    if (!parsed.isGitHub) {
+      job.state = 'failed'
+      job.error =
+        git === null
+          ? `未找到 git，且 ${parsed.host} 没有可用的归档兜底。请安装 git 或设置 DSH_GIT_EXE。`
+          : `git clone 失败，且 ${parsed.host} 没有可用的归档兜底。git 输出：${gitError.slice(0, 600)}`
       job.finishedAt = Date.now()
       await rm(dest, { recursive: true, force: true }).catch(() => {})
       return
@@ -626,13 +733,13 @@ export function apply(ctx: AppContext): void {
       job.finishedAt = Date.now()
     } else {
       job.state = 'failed'
-      // 认证类失败单独给出可操作的提示：本机凭据没覆盖这个仓库时，让用户填 token。
+      // 认证类失败单独给出可操作的提示：本机凭据没覆盖这个仓库时，让用户填令牌。
       const authLike =
         /(Authentication failed|could not read Username|terminal prompts disabled|Invalid username or password|Repository not found|403)/i.test(
           gitError,
         )
       job.error = authLike
-        ? `看起来是权限问题：本机 git 凭据（credential.helper）没有覆盖该仓库。请在「私有仓库凭据」填入 GitHub Personal Access Token 后重试。git 输出：${gitError.slice(0, 400)}；tarball：${fallback.error.slice(0, 300)}`
+        ? `看起来是权限问题：本机 git 凭据（credential.helper）没有覆盖该仓库。请在「访问令牌」里填入对应的 Personal Access Token 后重试。git 输出：${gitError.slice(0, 400)}；tarball：${fallback.error.slice(0, 300)}`
         : `git clone 与 tarball 均失败。git：${gitError === '' ? '不可用' : gitError.slice(0, 600)}；tarball：${fallback.error.slice(0, 600)}`
       job.finishedAt = Date.now()
     }
@@ -785,7 +892,7 @@ export function apply(ctx: AppContext): void {
 
     const job: CloneJob = {
       id: randomUUID(),
-      repo: `${parsed.owner}/${parsed.repo}`,
+      repo: parsed.label,
       dest,
       state: 'running',
       percent: 0,
