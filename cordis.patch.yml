@@ -1,0 +1,9 @@
+# dsh-github-workspace bundle 层：插入 host 侧插件行。
+# host 提供 /gh-workspace 下的 clone 任务路由；client 由 dsh.client 声明驱动，
+# 接管 ui-workspace 的两个 directory-flow 洞。
+#
+# id 与包名保持一致：安装器按包名去重/卸载时，重复安装不会产生两个 entry id。
+- insert:
+    - id: dsh-github-workspace
+      name: dsh-github-workspace
+      config: {}
