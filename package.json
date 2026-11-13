@@ -29,7 +29,7 @@
     "typescript": "^5.9.0"
   },
   "scripts": {
-    "build": "bash scripts/build.sh",
+    "build": "node scripts/build.mjs",
     "build:client": "tsdown",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build:all": "npm run build && npm run build:client",

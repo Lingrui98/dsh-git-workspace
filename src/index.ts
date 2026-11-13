@@ -609,7 +609,12 @@ async function directoryIsNonEmpty(path: string): Promise<boolean> {
 
 export function apply(ctx: AppContext): void {
   const dshHome = process.env.DSH_HOME || join(homedir(), '.dsh')
-  const defaultRoot = process.env.DSH_GITHUB_WORKSPACE_ROOT || join(dshHome, 'github-workspaces')
+  // 新变量名优先，旧名保留向后兼容；默认目录名保持 github-workspaces，
+  // 避免已克隆到该目录的工作区失效。
+  const defaultRoot =
+    process.env.DSH_GIT_WORKSPACE_ROOT ||
+    process.env.DSH_GITHUB_WORKSPACE_ROOT ||
+    join(dshHome, 'github-workspaces')
   const timeoutMs = DEFAULT_CLONE_TIMEOUT_MS
   const jobs = new Map<string, RunningJob>()
 

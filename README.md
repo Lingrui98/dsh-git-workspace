@@ -112,7 +112,8 @@ state ∈ running | done | failed | cancelled
 
 | 环境变量 | 默认 | 说明 |
 | --- | --- | --- |
-| `DSH_GITHUB_WORKSPACE_ROOT` | `~/.dsh/github-workspaces` | 默认克隆父目录 |
+| `DSH_GIT_WORKSPACE_ROOT` | `~/.dsh/github-workspaces` | 默认克隆父目录 |
+| `DSH_GITHUB_WORKSPACE_ROOT` | 空 | 旧变量名，仅在未设置新名时生效 |
 | `DSH_GIT_EXE` | 空 | 显式指定 git 可执行文件路径 |
 | `GITHUB_TOKEN` / `GH_TOKEN` | 空 | 私有仓库凭据，低于手动填写 |
 
@@ -188,13 +189,15 @@ DSH 的 client-modules 用包名当 boot graph 的 row id，注册 id 不一致�
 
 ## 构建
 
-本机没有 DSH 源码 checkout，构建只依赖本地安装的 TypeScript：
+host 半不依赖任何 DSH 包或第三方运行时库，构建只需要本地安装的 TypeScript：
 
 ```bash
 npm install
-node node_modules/typescript/bin/tsc -p tsconfig.json   # host 半 → lib/index.js
-npm run build:client                                     # client 半 → lib/client.js
+npm run build:all    # host → lib/index.js，client → lib/client.js
 ```
+
+`scripts/build.mjs` 直接调用 node，不经过 shell —— 这样在 WSL / Git Bash /
+纯 Windows 下都能跑（本机 `bash` 是 WSL 的，非登录 shell 里 PATH 不含 Windows 的 node）。
 
 装配（桌面 profile）：
 
@@ -210,5 +213,6 @@ dev_install_package { dir: "C:/Users/admin/Documents/dsh-infra/plugins/dsh-git-w
 - 接管是全局的：只要本插件在，内置目录浏览对话框就不出现，本地目录只能靠路径输入或系统选择器。
 - 本地目录页签的系统选择器依赖 `__DSH_DIRECTORY_PICKER__` 或 `uiWorkspace.pickDirectory()`，两者都没有时只显示路径输入和目录列表；
   非 Windows 桌面环境只显示路径输入框。
-- 只支持公开仓库；私有仓库需要凭据，当前没有做认证注入。
-- tarball 路径上限 256 MB，单次操作超时 5 分钟。
+- **codeload tarball 兜底只覆盖 GitHub**。GitLab、Gitee、自建服务器在没有 git 时会直接报错，不会降级。
+- tarball 路径上限 256 MB，单次 git 操作超时 15 分钟。
+- `existing` 判定只看目标目录是否非空，不校验它是否来自同一个仓库 —— 同名不同仓库时会复用已有目录。
