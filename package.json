@@ -1,15 +1,25 @@
 {
   "name": "dsh-git-workspace",
-  "version": "0.1.0",
-  "description": "Add a GitHub repository source to the new-workspace flow, with background clone progress and local credential reuse",
+  "version": "0.1.1",
+  "description": "Add a Git repository source to the new-workspace flow, with background clone progress and local credential reuse",
   "keywords": [
     "dsh",
     "dsh-plugin",
     "deepseek-harness",
     "workspace",
+    "git",
     "github",
+    "gitlab",
     "clone"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Lingrui98/dsh-git-workspace.git"
+  },
+  "homepage": "https://github.com/Lingrui98/dsh-git-workspace#readme",
+  "bugs": {
+    "url": "https://github.com/Lingrui98/dsh-git-workspace/issues"
+  },
   "type": "module",
   "main": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
